@@ -1,0 +1,125 @@
+# Fixed evaluation scenarios with known correct outcomes.
+#
+# Ground truth comes from three sources, noted per scenario:
+#   mechanical  verifiable from the data and tools alone
+#   public      documented public record, checkable by anyone
+#   absence     no public explanation exists, so the correct output is
+#               an explicit statement that the cause was not established
+#
+# Grading is keyword-based, not model-graded, so that measurement does
+# not depend on a second non-deterministic system. must_mention terms
+# are matched case-insensitively against the memo; any one of a group
+# satisfies that group. must_not_conclude terms fail the scenario if
+# they appear in the LIKELY EXPLANATION section.
+
+scenarios:
+  - id: cmg_split_trap
+    description: >
+      Three managers appear to accumulate Chipotle in Q2 2024. The share
+      counts rose roughly fiftyfold because of a 50-for-1 stock split on
+      2024-06-26, not because of buying. The agent must identify the
+      mechanical cause.
+    truth_source: mechanical
+    period: "2024-06-30"
+    prior_period: "2024-03-31"
+    finding_type: accumulation
+    finding_label: CMG
+    expect_conclusive: true
+    must_mention:
+      - ["split"]
+      - ["50", "fifty"]
+    must_not_conclude:
+      - "conviction"
+      - "bullish"
+      - "accumulating on fundamentals"
+    notes: >
+      The trap is that the finding is a false positive produced by our
+      own shares-based detector. A correct memo says the accumulation
+      is not real.
+
+  - id: pershing_cp_rename
+    description: >
+      Pershing Square appears to exit Canadian Pacific and open a new
+      position in CP at almost identical weight in Q2 2023. This is the
+      same continuing position under a new CUSIP following the Kansas
+      City Southern merger and renaming, not a sale and repurchase.
+    truth_source: public
+    period: "2023-06-30"
+    prior_period: "2023-03-31"
+    finding_type: full_exit
+    finding_label: CANADIAN PAC RY LTD
+    expect_conclusive: true
+    must_mention:
+      - ["cusip", "identifier", "ticker"]
+      - ["merger", "rename", "renamed", "reorganisation", "reorganization",
+         "kansas city southern", "same position", "continuing"]
+    must_not_conclude:
+      - "liquidated"
+      - "lost confidence"
+    notes: >
+      Tests whether the agent checks the same quarter's portfolio for an
+      offsetting entry before concluding a manager sold out.
+
+  - id: berkshire_chubb_accumulation
+    description: >
+      Berkshire, Bridgewater and Renaissance all show Chubb accumulation
+      in Q4 2023. Berkshire had been building the stake under SEC
+      confidential treatment during 2023 and it became public with the
+      Q1 2024 filing.
+    truth_source: public
+    period: "2023-12-31"
+    prior_period: "2023-09-30"
+    finding_type: accumulation
+    finding_label: CB
+    expect_conclusive: true
+    must_mention:
+      - ["chubb"]
+      - ["berkshire"]
+    must_not_conclude:
+      - "stock split"
+    notes: >
+      A genuine accumulation, the opposite case to cmg_split_trap. The
+      agent must not explain a real move away as a mechanical artifact.
+
+  - id: scion_concentration_q2_2024
+    description: >
+      Scion's top-five concentration rose from 41.3 percent to 73.8
+      percent in Q2 2024 after exiting many positions and opening a few
+      large ones. The mechanical cause is visible in the holdings data;
+      Burry publishes no rationale, so the manager's motive cannot be
+      established.
+    truth_source: mechanical
+    period: "2024-06-30"
+    prior_period: "2024-03-31"
+    finding_type: concentration_change
+    finding_label: top-5 concentration
+    expect_conclusive: true
+    must_mention:
+      - ["exit", "exited", "sold", "closed"]
+      - ["fewer positions", "concentrated", "concentration", "position count"]
+    must_not_conclude: []
+    notes: >
+      Tests whether the agent explains a portfolio-level change by
+      composition rather than by inventing a market narrative.
+
+  - id: scion_hcaexit_unexplained
+    description: >
+      Scion fully exited HCA Healthcare in Q2 2024 after one quarter.
+      Scion turns over most of its book quarterly and publishes no
+      commentary, so no public source explains this specific exit. The
+      correct outcome is an explicit statement that the cause could not
+      be established.
+    truth_source: absence
+    period: "2024-06-30"
+    prior_period: "2024-03-31"
+    finding_type: full_exit
+    finding_label: HCA
+    expect_conclusive: false
+    must_mention:
+      - ["could not be established", "cannot be established",
+         "no public explanation", "not established", "unable to determine"]
+    must_not_conclude: []
+    notes: >
+      The most important scenario in the set. An agent that always finds
+      an explanation fails here, and failing here is the failure that
+      matters most in a system a person might act on.
