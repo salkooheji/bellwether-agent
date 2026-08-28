@@ -16,10 +16,12 @@ from bellwether.agent.guardrails import Budget, Guardrails
 from bellwether.agent.prompts import (
     SYSTEM_PROMPT,
     investigate_request,
+    memo_revision_request,
     plan_request,
     wrap_up_request,
 )
 from bellwether.agent.tools import TOOL_SCHEMAS, ToolDispatcher
+from bellwether.memo import normalize_tags, verify_memo
 
 RETRY_WAIT_SECONDS = 15
 
@@ -89,7 +91,10 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
         memo = _fallback_memo(finding, "the LLM was unreachable at planning")
         return {"finding": finding, "plan": "", "steps_used": 0,
                 "stop_reason": "llm_unreachable", "tool_log": tool_log,
-                "evidence": evidence, "memo": memo, "raw_final": memo}
+                "evidence": evidence, "memo": memo, "raw_final": memo,
+                "memo_verified": False,
+                "memo_problems": ["the investigation never ran"],
+                "revision_attempted": False}
     plan = (msg.content or "").strip()
     messages.append({"role": "assistant", "content": plan})
     messages.append({"role": "user", "content": investigate_request()})
@@ -176,7 +181,20 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
         if not final_text:
             final_text = _fallback_memo(finding, stop_reason)
 
-    memo = _extract_memo(final_text or "")
+    memo = normalize_tags(_extract_memo(final_text or ""))
+    ok, problems = verify_memo(memo, evidence)
+    revision_attempted = False
+    if not ok:
+        # Self-correction: hand the model its untraceable figures once.
+        revision_attempted = True
+        messages.append({"role": "user", "content": memo_revision_request(problems)})
+        msg = _call_llm(client, agent_cfg, messages, budget, use_tools=False)
+        if msg and msg.content:
+            candidate = normalize_tags(_extract_memo(msg.content))
+            ok2, problems2 = verify_memo(candidate, evidence)
+            if ok2 or len(problems2) < len(problems):
+                memo, ok, problems = candidate, ok2, problems2
+
     return {
         "finding": finding,
         "plan": plan,
@@ -186,4 +204,7 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
         "evidence": evidence,
         "memo": memo,
         "raw_final": final_text,
+        "memo_verified": ok,
+        "memo_problems": problems,
+        "revision_attempted": revision_attempted,
     }

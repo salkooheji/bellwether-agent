@@ -97,3 +97,14 @@ def wrap_up_request(reason: str) -> str:
         "not establish a cause, the memo must say so explicitly rather "
         "than guess."
     )
+
+def memo_revision_request(problems: list[str]) -> str:
+    listed = "\n".join(f"- {p}" for p in problems)
+    return (
+        "Your memo failed verification against the evidence gathered in "
+        "this investigation:\n" + listed + "\n\nRewrite the memo in the "
+        "required format. Every figure must come from the evidence and "
+        "carry its id in square brackets like [E1]. If removing an "
+        "untraceable figure leaves a claim unsupported, drop the claim or "
+        "state that it could not be established. Do not call any tools."
+    )
