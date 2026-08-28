@@ -86,6 +86,18 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
     sig_to_eid: dict[str, str] = {}
 
     # Phase 1: the recorded plan, tools disabled.
+    if not budget.can_call_llm():
+        memo = _fallback_memo(finding, "the LLM call budget for this run was "
+                                       "exhausted before this investigation "
+                                       "began")
+        return {"finding": finding, "plan": "", "steps_used": 0,
+                "stop_reason": "budget_exhausted_before_start",
+                "tool_log": tool_log,
+                "evidence": evidence, "memo": memo, "raw_final": memo,
+                "memo_verified": False,
+                "memo_problems": ["the investigation never ran"],
+                "revision_attempted": False}
+
     msg = _call_llm(client, agent_cfg, messages, budget, use_tools=False)
     if msg is None:
         memo = _fallback_memo(finding, "the LLM was unreachable at planning")
@@ -184,7 +196,7 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
     memo = normalize_tags(_extract_memo(final_text or ""))
     ok, problems = verify_memo(memo, evidence)
     revision_attempted = False
-    if not ok:
+    if not ok and budget.can_call_llm():
         # Self-correction: hand the model its untraceable figures once.
         revision_attempted = True
         messages.append({"role": "user", "content": memo_revision_request(problems)})
