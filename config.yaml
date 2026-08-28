@@ -1,0 +1,41 @@
+# bellwether-agent configuration.
+# Every tunable number in the project lives here, not in code.
+# Secrets live in .env, never here.
+
+paths:
+  # Read-only source database produced by the 13f-portfolio-analysis project.
+  portfolio_db: C:/Users/PC/Desktop/Projects/Github/13f-portfolio-analysis/data/portfolio.db
+  # The agent's own state and outputs, relative to this project's root.
+  state_db: data/agent_state.db
+  memos_dir: memos
+  logs_dir: logs
+
+# The universe this agent watches: managers by SEC CIK number.
+# The source database stores only CIKs, so the names live here.
+universe:
+  managers:
+    1067983: Berkshire Hathaway Inc
+    1350694: Bridgewater Associates, LP
+    1649339: Scion Asset Management, LLC
+    1336528: Pershing Square Capital Management, L.P.
+    1037389: Renaissance Technologies LLC
+
+# What counts as "worth investigating". Weights are fractions of the
+# manager's total reported equity value, so 0.03 means 3 percent.
+detection:
+  new_position_min_weight: 0.03
+  exit_min_prior_weight: 0.02
+  concentration_top5_delta: 0.05
+  accumulation_min_managers: 3
+
+agent:
+  model: openai/gpt-oss-120b
+  temperature: 0.2
+  max_steps_per_investigation: 12
+  max_llm_calls_per_run: 40
+  max_tavily_calls_per_run: 10
+  max_findings_per_run: 5
+
+email:
+  enabled: false
+  to: ""
