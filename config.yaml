@@ -43,5 +43,5 @@ agent:
   max_findings_per_run: 5
 
 email:
-  enabled: false
-  to: ""
+  enabled: true
+  to: "test.projectss76@gmail.com"

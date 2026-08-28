@@ -26,6 +26,7 @@ import sys
 from groq import Groq
 
 from bellwether import db, detection, state
+from bellwether import emailer
 from bellwether.agent.guardrails import Budget
 from bellwether.agent.loop import investigate
 from bellwether.agent.tools import ToolDispatcher
@@ -129,6 +130,7 @@ def main() -> int:
     budget = Budget(cfg.agent["max_llm_calls_per_run"])
     cfg.memos_dir.mkdir(parents=True, exist_ok=True)
     memos_written = 0
+    sent_bundle: list[dict] = []
 
     for f in selected:
         print(f"Investigating: {f['summary']}")
@@ -146,13 +148,39 @@ def main() -> int:
         with open(memo_path, "w", encoding="utf-8") as fh:
             fh.write(header + result["memo"] + "\n")
         memos_written += 1
+        sent_bundle.append({
+            "summary": f["summary"],
+            "memo": result["memo"],
+            "verified": result["memo_verified"],
+            "stop_reason": result["stop_reason"],
+        })
         print(f"  -> {result['stop_reason']} | steps {result['steps_used']} | "
               f"verified {result['memo_verified']} | {memo_path.name}")
+
+    if cfg.email.get("enabled") and sent_bundle:
+        if cfg.secrets.gmail_address and cfg.secrets.gmail_app_password:
+            outcome = emailer.send_memos(
+                cfg.secrets.gmail_address,
+                cfg.secrets.gmail_app_password,
+                cfg.email.get("to") or cfg.secrets.gmail_address,
+                run_id, period, sent_bundle,
+            )
+        else:
+            outcome = {"ok": False,
+                       "error": "email enabled in config but GMAIL_ADDRESS "
+                                "or GMAIL_APP_PASSWORD is missing from .env"}
+        log.event("email", str(outcome))
+        print(f"Email delivery: {outcome}")
 
     log.event("budget", f"llm calls used: {budget.llm_calls} of "
                         f"{cfg.agent['max_llm_calls_per_run']}; tavily calls "
                         f"used: {dispatcher.tavily_calls} of "
                         f"{cfg.agent['max_tavily_calls_per_run']}")
+    if budget.errors:
+        log.event("api_errors",
+                  f"{len(budget.errors)} LLM API failures: "
+                  + "; ".join(budget.errors[:5]))
+        print(f"LLM API failures during run: {len(budget.errors)}")
     log.finish("ok", f"{memos_written} memos produced")
     path = log.save(run_id)
     state.finish_run(state_conn, run_id, "ok", period, len(findings),

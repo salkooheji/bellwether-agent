@@ -34,9 +34,22 @@ _RATIO = re.compile(
 # "top-5" is our own metric's name, not a figure.
 _TOP5 = re.compile(r"top[\s\u2010-\u2015\-]*(?:5|five)", re.IGNORECASE)
 
-def normalize_tags(memo: str) -> str:
-    """Fold full-width brackets into ASCII; models emit both."""
-    return memo.replace("\u3010", "[").replace("\u3011", "]")
+_DASHES = str.maketrans({
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-",
+    "\u2014": "-", "\u2015": "-", "\u2212": "-",
+})
+
+
+def normalize_memo(memo: str) -> str:
+    """Fold model typography into plain ASCII.
+
+    Models emit full-width brackets around evidence tags and unicode
+    dashes of several widths, including em dashes, en dashes, and
+    non-breaking hyphens. Both are folded here so verification sees one
+    form and memos read consistently wherever they are displayed.
+    """
+    return (memo.replace("\u3010", "[").replace("\u3011", "]")
+            .translate(_DASHES))
 
 
 def _numbers_in(text: str) -> list[float]:

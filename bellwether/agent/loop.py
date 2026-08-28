@@ -21,7 +21,7 @@ from bellwether.agent.prompts import (
     wrap_up_request,
 )
 from bellwether.agent.tools import TOOL_SCHEMAS, ToolDispatcher
-from bellwether.memo import normalize_tags, verify_memo
+from bellwether.memo import normalize_memo, verify_memo
 
 RETRY_WAIT_SECONDS = 15
 
@@ -49,7 +49,8 @@ def _call_llm(client, agent_cfg: dict, messages: list, budget: Budget,
                 kwargs["tool_choice"] = "auto"
             resp = client.chat.completions.create(**kwargs)
             return resp.choices[0].message
-        except Exception:
+        except Exception as e:
+            budget.errors.append(f"{type(e).__name__}: {e}"[:200])
             if attempt == 1:
                 time.sleep(RETRY_WAIT_SECONDS)
     return None
@@ -193,7 +194,7 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
         if not final_text:
             final_text = _fallback_memo(finding, stop_reason)
 
-    memo = normalize_tags(_extract_memo(final_text or ""))
+    memo = normalize_memo(_extract_memo(final_text or ""))
     ok, problems = verify_memo(memo, evidence)
     revision_attempted = False
     if not ok and budget.can_call_llm():
@@ -202,7 +203,7 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
         messages.append({"role": "user", "content": memo_revision_request(problems)})
         msg = _call_llm(client, agent_cfg, messages, budget, use_tools=False)
         if msg and msg.content:
-            candidate = normalize_tags(_extract_memo(msg.content))
+            candidate = normalize_memo(_extract_memo(msg.content))
             ok2, problems2 = verify_memo(candidate, evidence)
             if ok2 or len(problems2) < len(problems):
                 memo, ok, problems = candidate, ok2, problems2

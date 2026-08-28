@@ -51,6 +51,10 @@ WORKING METHOD:
 - Be economical: each call costs budget, and investigations have a step
   limit.
 
+WRITING STYLE:
+- Write in plain ASCII. Use ordinary hyphens and commas. Do not use em
+  dashes or en dashes, and do not use full-width brackets.
+
 When your investigation is complete, output the memo and nothing else,
 in exactly this format:
 
