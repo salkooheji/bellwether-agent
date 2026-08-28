@@ -84,6 +84,8 @@ def load_config(config_path: Path | None = None) -> Config:
         "exit_min_prior_weight",
         "concentration_top5_delta",
         "accumulation_min_managers",
+        "accumulation_min_shares_increase",
+        "investigation_priority",
     ):
         _require(detection, key, "detection")
 
