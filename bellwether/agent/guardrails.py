@@ -24,6 +24,7 @@ class Budget:
     def __init__(self, max_llm_calls: int):
         self.max_llm_calls = max_llm_calls
         self.llm_calls = 0
+        self.errors: list[str] = []
 
     def can_call_llm(self) -> bool:
         return self.llm_calls < self.max_llm_calls
