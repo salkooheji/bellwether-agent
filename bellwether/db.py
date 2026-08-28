@@ -137,3 +137,13 @@ def position_history(conn: sqlite3.Connection, cik: int, cusip: str) -> list[dic
             }
         )
     return history
+
+def resolve_cusip(conn: sqlite3.Connection, cusip: str) -> dict:
+    """Ticker and company name for a CUSIP, Nones when unresolved."""
+    row = conn.execute(
+        "SELECT ticker, company_name FROM cusip_map WHERE cusip = ?",
+        (cusip,),
+    ).fetchone()
+    if row is None:
+        return {"ticker": None, "company_name": None}
+    return {"ticker": row["ticker"], "company_name": row["company_name"]}
