@@ -93,13 +93,18 @@ def investigate_request() -> str:
     )
 
 
-def wrap_up_request(reason: str) -> str:
+def memo_request(digest: str, stopped_reason: str | None = None) -> str:
+    prefix = (
+        f"The investigation was stopped by a guardrail: {stopped_reason}. "
+        if stopped_reason else "The investigation is complete. "
+    )
     return (
-        f"The investigation was stopped by a guardrail: {reason}. Do not "
-        "call any more tools. Write the memo now, in the required format, "
-        "using only the evidence already gathered. If that evidence does "
-        "not establish a cause, the memo must say so explicitly rather "
-        "than guess."
+        prefix + "Write the briefing memo now, in the required format. Do "
+        "not call any tools.\n\nEVIDENCE GATHERED IN THIS INVESTIGATION:\n"
+        + digest + "\n\nEvery figure in the memo must come from this "
+        "evidence and carry its id in square brackets like [E1]. If the "
+        "evidence does not establish a cause, the memo must say so "
+        "explicitly rather than guess."
     )
 
 def memo_revision_request(problems: list[str]) -> str:

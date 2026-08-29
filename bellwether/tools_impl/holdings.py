@@ -12,7 +12,7 @@ import sqlite3
 
 from bellwether import db
 
-MAX_POSITIONS = 20
+MAX_POSITIONS = 12
 
 
 def get_portfolio(

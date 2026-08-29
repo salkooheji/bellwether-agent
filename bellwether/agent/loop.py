@@ -1,43 +1,68 @@
-"""The agent loop: plan, investigate with tools, conclude.
+"""The agent loop: plan, investigate with tools, write the memo.
 
 One call to investigate() handles one finding end to end and always
 returns a result, whatever the model or the tools do. The loop owns no
 policy of its own: limits live in Guardrails and Budget, tool behaviour
 lives in the dispatcher, and evidence discipline lives in the prompts.
-Its job is to run the conversation and keep the records.
+Its job is to run the conversation, manage context, and keep records.
+
+Context management matters here for a practical reason: an agent
+resends its whole conversation on every turn, so an untrimmed
+investigation grows past the provider's per-minute token limit and
+starts failing. Older tool results are therefore shortened in the
+model's working context while the evidence store keeps them in full,
+and the memo is written from a compact digest of that store.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import time
 
 from bellwether.agent.guardrails import Budget, Guardrails
 from bellwether.agent.prompts import (
     SYSTEM_PROMPT,
     investigate_request,
+    memo_request,
     memo_revision_request,
     plan_request,
-    wrap_up_request,
 )
 from bellwether.agent.tools import TOOL_SCHEMAS, ToolDispatcher
 from bellwether.memo import normalize_memo, verify_memo
 
-RETRY_WAIT_SECONDS = 15
+RETRY_ATTEMPTS = 3
+DEFAULT_RETRY_WAIT = 20
+MAX_RETRY_WAIT = 90
+KEEP_FULL_TOOL_RESULTS = 2
+TRIMMED_PREVIEW_CHARS = 250
+DIGEST_CHARS_PER_ITEM = 450
+
+_WAIT_RE = re.compile(r"try again in (?:([\d.]+)m)?([\d.]+)s")
+
+
+def _suggested_wait(message: str) -> float:
+    """How long the provider asked us to wait, when it says so."""
+    m = _WAIT_RE.search(message)
+    if not m:
+        return DEFAULT_RETRY_WAIT
+    minutes = float(m.group(1) or 0)
+    seconds = float(m.group(2))
+    return min(minutes * 60 + seconds + 1, MAX_RETRY_WAIT)
 
 
 def _call_llm(client, agent_cfg: dict, messages: list, budget: Budget,
               use_tools: bool):
-    """One chat completion, with one retry for transient API failures.
+    """One chat completion, retrying transient failures.
 
-    Returns the response message, or None if the API failed twice or the
-    budget ran out. Failed calls still count against the budget, because
-    they still hit the provider's rate limits.
+    Costs one budget unit however many retries it takes: retries are
+    provider throttling, not agent work. Returns the response message,
+    or None if the budget is gone or every attempt failed.
     """
-    for attempt in (1, 2):
-        if not budget.can_call_llm():
-            return None
-        budget.note_llm_call()
+    if not budget.can_call_llm():
+        return None
+    budget.note_llm_call()
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
         try:
             kwargs = {
                 "model": agent_cfg["model"],
@@ -50,10 +75,48 @@ def _call_llm(client, agent_cfg: dict, messages: list, budget: Budget,
             resp = client.chat.completions.create(**kwargs)
             return resp.choices[0].message
         except Exception as e:
-            budget.errors.append(f"{type(e).__name__}: {e}"[:200])
-            if attempt == 1:
-                time.sleep(RETRY_WAIT_SECONDS)
+            text = str(e)
+            budget.errors.append(f"{type(e).__name__}: {text}"[:200])
+            # A 413 means the request itself is too large; waiting will
+            # not shrink it, so retrying only wastes time.
+            if "413" in text or "too large" in text.lower():
+                return None
+            if attempt < RETRY_ATTEMPTS:
+                time.sleep(_suggested_wait(text))
     return None
+
+
+def _trim_context(messages: list) -> None:
+    """Shorten older tool results in place, keeping the recent ones full.
+
+    Tool messages are shortened rather than removed, because every tool
+    call in the conversation must keep a matching tool response.
+    """
+    tool_positions = [i for i, m in enumerate(messages)
+                      if m.get("role") == "tool"]
+    for i in tool_positions[:-KEEP_FULL_TOOL_RESULTS]:
+        content = messages[i]["content"]
+        if content.startswith('{"trimmed"') or len(content) <= TRIMMED_PREVIEW_CHARS:
+            continue
+        messages[i]["content"] = json.dumps({
+            "trimmed": True,
+            "note": "older tool result, shortened to save context; it was "
+                    "seen in full earlier in this investigation",
+            "preview": content[:TRIMMED_PREVIEW_CHARS],
+        })
+
+
+def _evidence_digest(evidence: dict[str, dict]) -> str:
+    """Compact rendering of everything the tools returned this run."""
+    if not evidence:
+        return "(no tool results were gathered)"
+    lines = []
+    for eid, result in evidence.items():
+        body = json.dumps(result, default=str)
+        if len(body) > DIGEST_CHARS_PER_ITEM:
+            body = body[:DIGEST_CHARS_PER_ITEM] + " ...(truncated)"
+        lines.append(f"{eid}: {body}")
+    return "\n".join(lines)
 
 
 def _extract_memo(text: str) -> str:
@@ -86,48 +149,43 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
     evidence: dict[str, dict] = {}
     sig_to_eid: dict[str, str] = {}
 
-    # Phase 1: the recorded plan, tools disabled.
-    if not budget.can_call_llm():
-        memo = _fallback_memo(finding, "the LLM call budget for this run was "
-                                       "exhausted before this investigation "
-                                       "began")
+    def _early_exit(stop_reason: str, note: str) -> dict:
         return {"finding": finding, "plan": "", "steps_used": 0,
-                "stop_reason": "budget_exhausted_before_start",
-                "tool_log": tool_log,
-                "evidence": evidence, "memo": memo, "raw_final": memo,
-                "memo_verified": False,
+                "stop_reason": stop_reason, "tool_log": tool_log,
+                "evidence": evidence, "memo": _fallback_memo(finding, note),
+                "raw_final": None, "memo_verified": False,
                 "memo_problems": ["the investigation never ran"],
                 "revision_attempted": False}
 
+    # Phase 1: the recorded plan, tools disabled.
+    if not budget.can_call_llm():
+        return _early_exit("budget_exhausted_before_start",
+                           "the LLM call budget for this run was exhausted "
+                           "before this investigation began")
     msg = _call_llm(client, agent_cfg, messages, budget, use_tools=False)
     if msg is None:
-        memo = _fallback_memo(finding, "the LLM was unreachable at planning")
-        return {"finding": finding, "plan": "", "steps_used": 0,
-                "stop_reason": "llm_unreachable", "tool_log": tool_log,
-                "evidence": evidence, "memo": memo, "raw_final": memo,
-                "memo_verified": False,
-                "memo_problems": ["the investigation never ran"],
-                "revision_attempted": False}
+        return _early_exit("llm_unreachable",
+                           "the LLM was unreachable at planning")
     plan = (msg.content or "").strip()
     messages.append({"role": "assistant", "content": plan})
     messages.append({"role": "user", "content": investigate_request()})
 
     # Phase 2: the investigation loop.
     stop_reason = None
-    final_text = None
     while True:
         reason = guard.note_step()
         if reason:
             stop_reason = reason
             break
+        _trim_context(messages)
         msg = _call_llm(client, agent_cfg, messages, budget, use_tools=True)
         if msg is None:
             stop_reason = "the LLM call budget for this run was exhausted"
             break
 
         if not msg.tool_calls:
-            final_text = msg.content or ""
-            messages.append({"role": "assistant", "content": final_text})
+            messages.append({"role": "assistant",
+                             "content": msg.content or ""})
             stop_reason = "completed"
             break
 
@@ -178,7 +236,7 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": json.dumps(wrapped),
+                "content": json.dumps(wrapped, default=str),
             })
 
         if stuck:
@@ -186,22 +244,35 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
                            "the agent is stuck")
             break
 
-    # Phase 3: conclude.
-    if stop_reason != "completed":
-        messages.append({"role": "user", "content": wrap_up_request(stop_reason)})
-        msg = _call_llm(client, agent_cfg, messages, budget, use_tools=False)
-        final_text = (msg.content or "").strip() if msg else None
-        if not final_text:
-            final_text = _fallback_memo(finding, stop_reason)
+    # Phase 3: write the memo in a fresh, compact conversation.
+    # The investigation conversation is large enough to exceed the
+    # provider's per-request token ceiling, and the memo only needs the
+    # finding, the plan, and the evidence, so it is written from those
+    # alone rather than from the full transcript.
+    memo_messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": plan_request(finding)},
+        {"role": "assistant", "content": plan},
+        {"role": "user", "content": memo_request(
+            _evidence_digest(evidence),
+            None if stop_reason == "completed" else stop_reason,
+        )},
+    ]
+    msg = _call_llm(client, agent_cfg, memo_messages, budget, use_tools=False)
+    final_text = (msg.content or "").strip() if msg else None
+    if not final_text:
+        final_text = _fallback_memo(finding, stop_reason)
 
-    memo = normalize_memo(_extract_memo(final_text or ""))
+    memo = normalize_memo(_extract_memo(final_text))
     ok, problems = verify_memo(memo, evidence)
     revision_attempted = False
     if not ok and budget.can_call_llm():
-        # Self-correction: hand the model its untraceable figures once.
         revision_attempted = True
-        messages.append({"role": "user", "content": memo_revision_request(problems)})
-        msg = _call_llm(client, agent_cfg, messages, budget, use_tools=False)
+        memo_messages.append({"role": "assistant", "content": memo})
+        memo_messages.append({"role": "user",
+                              "content": memo_revision_request(problems)})
+        msg = _call_llm(client, agent_cfg, memo_messages, budget,
+                        use_tools=False)
         if msg and msg.content:
             candidate = normalize_memo(_extract_memo(msg.content))
             ok2, problems2 = verify_memo(candidate, evidence)
