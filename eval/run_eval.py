@@ -37,7 +37,7 @@ from bellwether.agent.tools import ToolDispatcher  # noqa: E402
 from bellwether.config import load_config  # noqa: E402
 
 RESULTS_DIR = ROOT / "eval" / "results"
-PAUSE_BETWEEN_TRIALS = 10  # seconds, to stay inside free-tier rate limits
+PAUSE_BETWEEN_TRIALS = 30  # seconds, to stay inside free-tier rate limits
 
 
 def load_scenarios() -> list[dict]:

@@ -34,6 +34,7 @@ from bellwether.memo import normalize_memo, verify_memo
 RETRY_ATTEMPTS = 3
 DEFAULT_RETRY_WAIT = 20
 MAX_RETRY_WAIT = 90
+PACE_BETWEEN_CALLS = 8  # seconds; keeps large requests inside 8k TPM
 KEEP_FULL_TOOL_RESULTS = 3
 TRIMMED_PREVIEW_CHARS = 400
 DIGEST_CHARS_PER_ITEM = 500
@@ -60,6 +61,9 @@ def _call_llm(client, agent_cfg: dict, messages: list, budget: Budget,
     """
     if not budget.can_call_llm():
         return None
+    # The provider's per-minute token limit is small relative to a late
+    # agent turn, so calls are paced rather than sent back to back.
+    time.sleep(PACE_BETWEEN_CALLS)
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         try:
             kwargs = {

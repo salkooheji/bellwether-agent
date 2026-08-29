@@ -28,7 +28,7 @@ class Budget:
     run should stop rather than grind.
     """
 
-    def __init__(self, max_llm_calls: int, max_consecutive_failures: int = 3):
+    def __init__(self, max_llm_calls: int, max_consecutive_failures: int = 5):
         self.max_llm_calls = max_llm_calls
         self.max_consecutive_failures = max_consecutive_failures
         self.llm_calls = 0
