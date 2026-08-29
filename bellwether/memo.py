@@ -18,7 +18,8 @@ from __future__ import annotations
 import json
 import re
 
-TAG_RE = re.compile(r"\[(E\d+)\]")
+# Models emit tags as [E1], [ E1 ], and grouped as [E1, E2]; all count.
+TAG_RE = re.compile(r"\[\s*(E\d+(?:\s*,\s*E\d+)*)\s*\]")
 NUM_RE = re.compile(r"(?<![A-Za-z0-9_])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)"
                     r"(?![A-Za-z0-9_])")
 # Tokens whose digits are names, not figures, e.g. the form called 13F.
@@ -86,7 +87,10 @@ def verify_memo(memo: str, evidence: dict[str, dict]) -> tuple[bool, list[str]]:
     """
     problems: list[str] = []
 
-    for tag in set(TAG_RE.findall(memo)):
+    found_tags = {t.strip()
+                  for group in TAG_RE.findall(memo)
+                  for t in group.split(",")}
+    for tag in found_tags:
         if tag not in evidence:
             problems.append(
                 f"the tag [{tag}] references evidence that does not exist; "
