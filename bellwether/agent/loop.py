@@ -34,9 +34,9 @@ from bellwether.memo import normalize_memo, verify_memo
 RETRY_ATTEMPTS = 3
 DEFAULT_RETRY_WAIT = 20
 MAX_RETRY_WAIT = 90
-KEEP_FULL_TOOL_RESULTS = 2
-TRIMMED_PREVIEW_CHARS = 250
-DIGEST_CHARS_PER_ITEM = 450
+KEEP_FULL_TOOL_RESULTS = 3
+TRIMMED_PREVIEW_CHARS = 400
+DIGEST_CHARS_PER_ITEM = 500
 
 _WAIT_RE = re.compile(r"try again in (?:([\d.]+)m)?([\d.]+)s")
 
@@ -55,13 +55,11 @@ def _call_llm(client, agent_cfg: dict, messages: list, budget: Budget,
               use_tools: bool):
     """One chat completion, retrying transient failures.
 
-    Costs one budget unit however many retries it takes: retries are
-    provider throttling, not agent work. Returns the response message,
-    or None if the budget is gone or every attempt failed.
+    Only successful calls are charged to the budget. Oversized requests
+    are not retried, since waiting cannot shrink them.
     """
     if not budget.can_call_llm():
         return None
-    budget.note_llm_call()
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         try:
             kwargs = {
@@ -73,12 +71,11 @@ def _call_llm(client, agent_cfg: dict, messages: list, budget: Budget,
                 kwargs["tools"] = TOOL_SCHEMAS
                 kwargs["tool_choice"] = "auto"
             resp = client.chat.completions.create(**kwargs)
+            budget.note_success()
             return resp.choices[0].message
         except Exception as e:
             text = str(e)
-            budget.errors.append(f"{type(e).__name__}: {text}"[:200])
-            # A 413 means the request itself is too large; waiting will
-            # not shrink it, so retrying only wastes time.
+            budget.note_failure(f"{type(e).__name__}: {text}")
             if "413" in text or "too large" in text.lower():
                 return None
             if attempt < RETRY_ATTEMPTS:
@@ -180,7 +177,11 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
         _trim_context(messages)
         msg = _call_llm(client, agent_cfg, messages, budget, use_tools=True)
         if msg is None:
-            stop_reason = "the LLM call budget for this run was exhausted"
+            stop_reason = (
+                "the LLM provider was unavailable, likely rate limited"
+                if budget.provider_unavailable()
+                else "the LLM call budget for this run was exhausted"
+            )
             break
 
         if not msg.tool_calls:

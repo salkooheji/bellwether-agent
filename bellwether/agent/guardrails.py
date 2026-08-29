@@ -19,18 +19,36 @@ import json
 
 
 class Budget:
-    """Per-run spend counters, shared across investigations in one run."""
+    """Per-run spend counters, shared across investigations in one run.
 
-    def __init__(self, max_llm_calls: int):
+    Only successful calls count against the budget: a call the provider
+    refused did no work, and charging it would make a throttled session
+    look like a busy one. Consecutive failures are tracked separately,
+    because sustained refusal means the provider is unavailable and the
+    run should stop rather than grind.
+    """
+
+    def __init__(self, max_llm_calls: int, max_consecutive_failures: int = 3):
         self.max_llm_calls = max_llm_calls
+        self.max_consecutive_failures = max_consecutive_failures
         self.llm_calls = 0
         self.errors: list[str] = []
+        self.consecutive_failures = 0
 
     def can_call_llm(self) -> bool:
-        return self.llm_calls < self.max_llm_calls
+        return (self.llm_calls < self.max_llm_calls
+                and not self.provider_unavailable())
 
-    def note_llm_call(self) -> None:
+    def note_success(self) -> None:
         self.llm_calls += 1
+        self.consecutive_failures = 0
+
+    def note_failure(self, error: str) -> None:
+        self.errors.append(error[:200])
+        self.consecutive_failures += 1
+
+    def provider_unavailable(self) -> bool:
+        return self.consecutive_failures >= self.max_consecutive_failures
 
 
 class Guardrails:

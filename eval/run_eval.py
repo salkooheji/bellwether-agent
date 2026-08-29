@@ -189,6 +189,15 @@ def main() -> int:
             result = investigate(finding, client, dispatcher, cfg.agent, budget)
             elapsed = round(time.time() - started, 1)
             verdict = grade(scenario, result)
+            if budget.provider_unavailable():
+                print("\nABORTING: the LLM provider refused several calls in "
+                      "a row, most likely a rate limit or daily quota.\n"
+                      "This trial was not recorded. Resume later with:\n"
+                      f"  python eval/run_eval.py --trials {args.trials} "
+                      f"--label {args.label} --resume")
+                if budget.errors:
+                    print(f"Last error: {budget.errors[-1][:160]}")
+                return 1
 
             record = {
                 "label": args.label,
