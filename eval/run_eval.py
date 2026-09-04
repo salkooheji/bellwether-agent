@@ -203,8 +203,11 @@ def main() -> int:
             agent_stops = ("completed", "step limit", "stuck", "repeated")
             agent_ran = any(s in result["stop_reason"] for s in agent_stops)
             if budget.provider_unavailable():
-                print("\nABORTING: the LLM provider refused several calls in "
-                      "a row, most likely a rate limit or daily quota.\n"
+                cause = ("the daily token quota is exhausted; it refills on a "
+                         "rolling 24 hour window"
+                         if budget.daily_quota_exhausted
+                         else "the provider refused several calls in a row")
+                print(f"\nABORTING: {cause}.\n"
                       "This trial was not recorded. Resume later with:\n"
                       f"  python eval/run_eval.py --trials {args.trials} "
                       f"--label {args.label} --resume")

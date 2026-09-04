@@ -37,7 +37,7 @@ MAX_RETRY_WAIT = 90
 # The provider allows 8,000 tokens per minute, roughly 133 per second.
 # A late agent turn carries several thousand tokens of context, so calls
 # must be spaced by tens of seconds rather than sent back to back.
-PACE_BETWEEN_CALLS = 50
+PACE_BETWEEN_CALLS = 20
 KEEP_FULL_TOOL_RESULTS = 3
 TRIMMED_PREVIEW_CHARS = 400
 DIGEST_CHARS_PER_ITEM = 500
@@ -84,6 +84,11 @@ def _call_llm(client, agent_cfg: dict, messages: list, budget: Budget,
             text = str(e)
             budget.note_failure(f"{type(e).__name__}: {text}")
             if "413" in text or "too large" in text.lower():
+                return None
+            # A daily token ceiling will not clear within a retry window,
+            # so waiting is pointless; fail fast and let the caller stop.
+            if "TPD" in text or "tokens per day" in text.lower():
+                budget.daily_quota_exhausted = True
                 return None
             if attempt < RETRY_ATTEMPTS:
                 # 429s carry the provider's own suggested wait; honour it

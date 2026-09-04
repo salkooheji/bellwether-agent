@@ -34,6 +34,7 @@ class Budget:
         self.llm_calls = 0
         self.errors: list[str] = []
         self.consecutive_failures = 0
+        self.daily_quota_exhausted = False
 
     def can_call_llm(self) -> bool:
         return (self.llm_calls < self.max_llm_calls
@@ -44,11 +45,12 @@ class Budget:
         self.consecutive_failures = 0
 
     def note_failure(self, error: str) -> None:
-        self.errors.append(error[:200])
+        self.errors.append(error[:600])
         self.consecutive_failures += 1
 
-    def provider_unavailable(self) -> bool:
-        return self.consecutive_failures >= self.max_consecutive_failures
+        def provider_unavailable(self) -> bool:
+            return (self.daily_quota_exhausted
+                or self.consecutive_failures >= self.max_consecutive_failures)
 
 
 class Guardrails:
