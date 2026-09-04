@@ -187,9 +187,9 @@ def investigate(finding: dict, client, dispatcher: ToolDispatcher,
         msg = _call_llm(client, agent_cfg, messages, budget, use_tools=True)
         if msg is None:
             stop_reason = (
-                "the LLM provider was unavailable, likely rate limited"
-                if budget.provider_unavailable()
-                else "the LLM call budget for this run was exhausted"
+                "the LLM call budget for this run was exhausted"
+                if budget.consecutive_failures == 0
+                else "the LLM provider was unavailable, likely rate limited"
             )
             break
 

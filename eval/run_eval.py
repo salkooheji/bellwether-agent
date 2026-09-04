@@ -131,7 +131,11 @@ def already_done(path: Path) -> set[tuple[str, int]]:
             for line in f:
                 try:
                     rec = json.loads(line)
-                    done.add((rec["scenario_id"], rec["trial"]))
+                    # Trials where the agent never ran are infrastructure
+                    # failures, not results, so they are re-run rather than
+                    # counted. Their records stay in the file as evidence.
+                    if rec.get("agent_ran", True):
+                        done.add((rec["scenario_id"], rec["trial"]))
                 except (json.JSONDecodeError, KeyError):
                     continue
     return done
@@ -167,16 +171,23 @@ def main() -> int:
     client = Groq(api_key=cfg.secrets.groq_api_key)
     total = passed = 0
 
+    resolved = []
     for scenario in scenarios:
         finding = resolve_finding(conn, cfg.managers, cfg.detection, scenario)
         if finding is None:
             print(f"[{scenario['id']}] SKIPPED: finding did not resolve to "
                   "exactly one match")
             continue
-        print(f"\n=== {scenario['id']} ({scenario['truth_source']}) ===")
-        print(f"    {finding['summary'][:100]}")
+        resolved.append((scenario, finding))
 
-        for trial in range(1, args.trials + 1):
+    # Trial-major order: every scenario gets its first trial before any
+    # gets its second, so no scenario is systematically run last when
+    # the provider's rate window is most depleted.
+    for trial in range(1, args.trials + 1):
+        for scenario, finding in resolved:
+            print(f"\n=== {scenario['id']} trial {trial} "
+                  f"({scenario['truth_source']}) ===")
+            print(f"    {finding['summary'][:100]}")
             if (scenario["id"], trial) in done:
                 print(f"  trial {trial}: already recorded, skipping")
                 continue
@@ -189,6 +200,8 @@ def main() -> int:
             result = investigate(finding, client, dispatcher, cfg.agent, budget)
             elapsed = round(time.time() - started, 1)
             verdict = grade(scenario, result)
+            agent_stops = ("completed", "step limit", "stuck", "repeated")
+            agent_ran = any(s in result["stop_reason"] for s in agent_stops)
             if budget.provider_unavailable():
                 print("\nABORTING: the LLM provider refused several calls in "
                       "a row, most likely a rate limit or daily quota.\n"
@@ -206,6 +219,7 @@ def main() -> int:
                 "trial": trial,
                 "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "passed": verdict["passed"],
+                "agent_ran": agent_ran,
                 "reasons": verdict["reasons"],
                 "stated_confidence": verdict["stated_confidence"],
                 "stop_reason": result["stop_reason"],
