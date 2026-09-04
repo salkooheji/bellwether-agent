@@ -37,7 +37,7 @@ MAX_RETRY_WAIT = 90
 # The provider allows 8,000 tokens per minute, roughly 133 per second.
 # A late agent turn carries several thousand tokens of context, so calls
 # must be spaced by tens of seconds rather than sent back to back.
-PACE_BETWEEN_CALLS = 35
+PACE_BETWEEN_CALLS = 50
 KEEP_FULL_TOOL_RESULTS = 3
 TRIMMED_PREVIEW_CHARS = 400
 DIGEST_CHARS_PER_ITEM = 500
@@ -87,8 +87,9 @@ def _call_llm(client, agent_cfg: dict, messages: list, budget: Budget,
                 return None
             if attempt < RETRY_ATTEMPTS:
                 # 429s carry the provider's own suggested wait; honour it
-                # with a margin rather than guessing.
-                time.sleep(_suggested_wait(text) + 5)
+                # with a margin, since a refused large request means the
+                # per-minute token bucket is empty rather than merely low.
+                time.sleep(_suggested_wait(text) + 20)
     return None
 
 
