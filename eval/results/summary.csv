@@ -1,0 +1,6 @@
+arm,step_limit,scenario_id,trials,passed,completion_rate,mean_steps,hit_step_limit
+baseline,8,berkshire_chubb_accumulation,2,2,1.0,9.0,2
+baseline,8,cmg_split_trap,2,2,1.0,9.0,2
+baseline,8,pershing_cp_rename,2,1,0.5,7.5,0
+baseline,8,scion_concentration_q2_2024,2,0,0.0,9.0,2
+baseline,8,scion_hcaexit_unexplained,2,0,0.0,9.0,2
