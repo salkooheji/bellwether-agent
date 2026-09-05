@@ -48,8 +48,8 @@ class Budget:
         self.errors.append(error[:600])
         self.consecutive_failures += 1
 
-        def provider_unavailable(self) -> bool:
-            return (self.daily_quota_exhausted
+    def provider_unavailable(self) -> bool:
+        return (self.daily_quota_exhausted
                 or self.consecutive_failures >= self.max_consecutive_failures)
 
 
