@@ -5,6 +5,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-read--only-lightgrey)
 ![Agent](https://img.shields.io/badge/agent-loop%20written%20from%20scratch-purple)
 ![Trials](https://img.shields.io/badge/evaluation-20%20graded%20trials-brightgreen)
+![Tests](https://img.shields.io/badge/pytest-18%20passed-brightgreen)
 ![Completion](https://img.shields.io/badge/task%20completion-50%25%20baseline-yellow)
 ![Traceability](https://img.shields.io/badge/memo%20figures-verified%20against%20evidence-brightgreen)
 
