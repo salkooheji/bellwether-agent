@@ -37,7 +37,7 @@ detection:
 agent:
   model: openai/gpt-oss-120b
   temperature: 0.2
-  max_steps_per_investigation: 8
+  max_steps_per_investigation: 12
   max_llm_calls_per_run: 40
   max_tavily_calls_per_run: 10
   max_findings_per_run: 5
