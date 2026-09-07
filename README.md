@@ -4,9 +4,9 @@
 ![Groq](https://img.shields.io/badge/LLM-Groq%20gpt--oss--120b-orange)
 ![SQLite](https://img.shields.io/badge/SQLite-read--only-lightgrey)
 ![Agent](https://img.shields.io/badge/agent-loop%20written%20from%20scratch-purple)
-![Trials](https://img.shields.io/badge/evaluation-20%20graded%20trials-brightgreen)
+![Trials](https://img.shields.io/badge/evaluation-30%20graded%20trials-brightgreen)
 ![Tests](https://img.shields.io/badge/pytest-18%20passed-brightgreen)
-![Completion](https://img.shields.io/badge/task%20completion-50%25%20baseline-yellow)
+![Completion](https://img.shields.io/badge/task%20completion-60%25%20agent%20vs%2030%25%20fixed-yellow)
 ![Traceability](https://img.shields.io/badge/memo%20figures-verified%20against%20evidence-brightgreen)
 
 An autonomous agent that monitors institutional 13F portfolios, decides
@@ -53,19 +53,54 @@ agent that always finds something is generating, not detecting.
 Five fixed scenarios with documented ground truth, each run repeatedly
 because the system is non-deterministic and a single run is an anecdote.
 
-| Arm | Step limit | Trials | Task completion rate |
-|---|---|---|---|
-| Baseline | 8 | 10 | 50.0% (5/10) |
-| Raised step limit | 12 | 10 | TBD |
-| Fixed non-agentic pipeline | none | 10 | TBD |
+| Arm | Step limit | Trials | Completion rate | Stopped by step limit | Mean LLM calls | Mean seconds |
+|---|---|---|---|---|---|---|
+| Baseline | 8 | 10 | 50% (5/10) | 8/10 | 10.2 | 357 |
+| Raised step limit | 12 | 10 | 60% (6/10) | 2/10 | 11.9 | 289 |
+| Fixed non-agentic pipeline | none | 10 | 30% (3/10) | n/a | 1.0 | 26 |
 
-Every figure above is computed by `eval/analysis.ipynb` from the raw
-trial records in `eval/results/`, which are committed so that any number
-here can be recomputed rather than taken on trust.
+Thirty graded trials in total. Every figure above is computed by
+`eval/analysis.ipynb` from the raw trial records in `eval/results/`,
+which are committed so that any number here can be recomputed rather
+than taken on trust.
+
+**The experiment.** In the baseline, eight of ten trials ended because
+the agent hit the step ceiling rather than because it decided it had
+finished, which made the ceiling rather than the agent's reasoning the
+most likely constraint. Raising `max_steps_per_investigation` from 8 to
+12, changing nothing else, moved the completion rate from 50% to 60%
+and cut ceiling-stopped trials from 8/10 to 2/10. The mechanism and the
+outcome moved together, but the size of the effect is modest and the
+sample is small, so this is evidence rather than proof. Mean steps rose
+only from 8.7 to 9.4, so the agent was not straining against the old
+ceiling; it hit it in a few cases and otherwise finished or looped.
+
+**What agency costs.** The fixed pipeline reaches 30% using one LLM
+call and 26 seconds per finding. The agent reaches 60% using around
+twelve calls and roughly five minutes. Doubling the completion rate
+costs about twelve times the calls and eleven times the wall clock. The
+comparison also shows where the agency is spent: the fixed pipeline
+tried to price "CANADIAN PAC RY LTD" and "TOP-5 CONCENTRATION" as
+ticker symbols, because a fixed sequence cannot notice that a lookup
+made no sense and try something else. Seven of its ten failures were
+untraceable figures, since gathering evidence blindly means the memo
+often needs a number nobody fetched. The caveat: this is one reasonable
+fixed sequence, not the best possible one, so the comparison shows what
+this baseline achieves rather than proving agency superior in general.
+
+**Where the arms disagree.** The two agent arms do not simply differ in
+level, they differ in which scenarios they can do. The baseline solved
+the split trap and the rename trap; the raised-limit arm lost both and
+gained the concentration and unexplained-exit scenarios instead. Run to
+run variance is large relative to the difference between arms, which is
+the clearest argument in this repository for reporting rates over
+single runs.
 
 ![Completion by scenario](docs/images/completion_by_scenario.png)
 
-TBD caption once both arms are measured.
+Completion rate per scenario across the three arms. The agent arms differ
+in which scenarios they solve rather than simply in level, and the fixed
+pipeline never exceeds half on any scenario.
 
 ### The scenarios
 
@@ -83,13 +118,51 @@ matters most in a system a person might act on.
 
 ### Failure taxonomy
 
-TBD, built from failures actually observed across the graded trials, with
-a real example for each category identified by scenario and trial number.
+Derived in `eval/analysis.ipynb` from the reasons the harness recorded
+across all thirty trials, not from a list written in advance. Sixteen
+trials failed, producing twenty category assignments, since a trial can
+fail in more than one way.
+
+| Failures | Category | What it looks like |
+|---|---|---|
+| 13 | Memo contained figures not found in the evidence | The reasoning is sound but a number in the memo was never returned by any tool in that investigation. Caught by verification, so the memo is marked unverified rather than published as fact. |
+| 5 | Conclusion missed a required concept | The investigation completed but the memo never reached the explanation the ground truth requires, for example never connecting a concentration rise to positions being exited. |
+| 2 | Stopped by a guardrail before concluding | The memo was inconclusive because the agent ran out of steps, which is not the same as deciding honestly that the cause could not be established. |
+
+The most common failure is grounding rather than reasoning. That is worth
+stating plainly: the agent is more often right about what happened than it
+is disciplined about where its numbers came from, and the verifier exists
+because that gap is real.
+
+**The failure that matters most.** On `scion_hcaexit_unexplained`, where
+no public explanation exists and the correct output is an explicit
+statement of uncertainty, the agent said so in one of two trials at the
+raised step limit. The trial that failed had ruled out corporate actions
+and found no catalyst, then concluded a "purposeful reallocation" at high
+confidence, citing a news article that said only that the manager sold
+several holdings that quarter. It mistook the absence of a mechanical
+cause for the presence of a behavioural one. The trial that passed, on
+the same finding with the same configuration, searched twice more and
+concluded that the cause could not be established, at medium confidence.
 
 ### Confidence calibration
 
-TBD once both arms are complete. The baseline result was that stated
-confidence does not track correctness in the way it should.
+Every memo states a confidence level. If that statement carries
+information, high-confidence memos should be right more often than
+low-confidence ones. In the baseline arm they were not: memos stating
+medium confidence were correct in 1 of 6 trials, while both the high and
+low bands were correct in every trial they appeared in.
+
+The pattern is not simple overconfidence. Medium appears to be the band
+the agent reaches for when it is unsure what it has found, which makes it
+a low-information label rather than a middle one. The counterexample runs
+the other way too: on the unexplained-exit scenario, the trial that
+reached the wrong conclusion stated high confidence, and the trial that
+correctly reported uncertainty stated medium.
+
+A reader should therefore treat the stated confidence as commentary
+rather than as a calibrated probability. Improving this would mean
+constraining when each level may be used, and measuring again.
 
 ## The universe
 
