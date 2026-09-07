@@ -374,7 +374,9 @@ trial cannot suppress the next.
 
 ![Evaluation notebook](docs/images/analysis_notebook.png)
 
-TBD caption once both arms are measured.
+The arm comparison computed in the notebook: completion rate, how often
+each arm was stopped by the step limit, and the cost per finding in LLM
+calls and wall-clock seconds.
 
 ## Operating constraints
 
