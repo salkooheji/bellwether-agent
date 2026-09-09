@@ -135,7 +135,8 @@ def main() -> int:
     client = Groq(api_key=cfg.secrets.groq_api_key)
     dispatcher = ToolDispatcher(holdings_conn, cfg.managers,
                                 cfg.secrets.tavily_api_key,
-                                cfg.agent["max_tavily_calls_per_run"])
+                                cfg.agent["max_tavily_calls_per_run"],
+                                cfg.agent["max_positions_per_tool_result"])
     budget = Budget(cfg.agent["max_llm_calls_per_run"])
     cfg.memos_dir.mkdir(parents=True, exist_ok=True)
     memos_written = 0

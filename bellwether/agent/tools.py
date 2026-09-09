@@ -124,11 +124,13 @@ class ToolDispatcher:
         managers: dict[int, str],
         tavily_api_key: str,
         max_tavily_calls: int,
+        max_positions: int = 12,
     ):
         self.conn = conn
         self.managers = managers
         self.tavily = TavilyClient(api_key=tavily_api_key)
         self.max_tavily_calls = max_tavily_calls
+        self.max_positions = max_positions
         self.tavily_calls = 0
 
     def dispatch(self, name: str, arguments: str) -> dict:
@@ -148,6 +150,7 @@ class ToolDispatcher:
                 return holdings.get_portfolio(
                     self.conn, self.managers,
                     int(args["cik"]), str(args["period"]),
+                    top_n=self.max_positions,
                 )
             if name == "get_position_history":
                 return holdings.get_position_history(

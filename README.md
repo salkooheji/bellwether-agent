@@ -295,6 +295,12 @@ than at a partly trimmed conversation.
 | Repeated identical calls | `Guardrails.check_repeat` | First repeat returns the cached result with a warning at no API cost. A second repeat aborts the investigation as stuck |
 | Cannot establish a cause | System prompt plus memo verification | The memo must say so explicitly. An unexplained finding honestly reported is a correct output |
 
+One detail worth knowing when reading the evaluation records: the step
+counter records the loop iteration on which a limit fired, so a trial at
+a limit of 12 reports 13 steps used. The check happens at the start of
+each iteration. It is consistent across configurations, so comparisons
+between them are unaffected.
+
 ## Running it
 
 Requires Python 3.10+, a `portfolio.db` produced by
@@ -323,6 +329,11 @@ Triggering a run:
 A run with nothing new to examine ends quietly and records that it did.
 Memos are written to `memos/`, a full JSON record of the run to `logs/`,
 and the run itself to a state database at `data/agent_state.db`.
+
+The scheduled path compares filing dates against the watermark, while
+`--force` and `--quarter` are manual overrides that examine a quarter
+regardless of whether anything new has arrived. Memory still applies in
+all three cases, so findings already reported stay suppressed.
 
 ![Run log](docs/images/run_output.png)
 

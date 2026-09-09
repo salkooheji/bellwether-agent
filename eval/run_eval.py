@@ -194,7 +194,8 @@ def main() -> int:
 
             dispatcher = ToolDispatcher(conn, cfg.managers,
                                         cfg.secrets.tavily_api_key,
-                                        cfg.agent["max_tavily_calls_per_run"])
+                                        cfg.agent["max_tavily_calls_per_run"],
+                                        cfg.agent["max_positions_per_tool_result"])
             budget = Budget(cfg.agent["max_llm_calls_per_run"])
             started = time.time()
             result = investigate(finding, client, dispatcher, cfg.agent, budget)

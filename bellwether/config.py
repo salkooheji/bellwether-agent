@@ -96,6 +96,7 @@ def load_config(config_path: Path | None = None) -> Config:
         "max_llm_calls_per_run",
         "max_tavily_calls_per_run",
         "max_findings_per_run",
+        "max_positions_per_tool_result",
     ):
         _require(agent, key, "agent")
 
