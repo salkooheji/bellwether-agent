@@ -61,6 +61,7 @@ def main() -> int:
     print(f"Run {run_id} started ({args.trigger}).")
 
     quarters = db.list_quarters(holdings_conn)
+    latest_filed = db.latest_filed_date(holdings_conn)
     if len(quarters) < 2:
         log.finish("error", "fewer than two parsed quarters in the database")
         log.save(run_id)
@@ -81,17 +82,25 @@ def main() -> int:
             return 1
         period = args.quarter
     else:
-        period = quarters[-1]
-        already = state.last_examined_quarter(state_conn)
-        if not args.force and already is not None and period <= already:
-            log.event("trigger", f"latest quarter {period} already examined "
-                                 f"(last examined {already}); nothing new")
+        watermark = state.last_filed_date_seen(state_conn)
+        new_quarters = db.quarters_with_filings_since(holdings_conn, watermark)
+        if not args.force and not new_quarters:
+            log.event("trigger", "no filings have arrived since "
+                                 f"{watermark}; nothing new")
             log.finish("quiet", "no new data since last run")
             path = log.save(run_id)
             state.finish_run(state_conn, run_id, "quiet", None, 0, 0, 0,
-                            "no new data since last run")
+                            "no new data since last run", latest_filed)
             print(f"Nothing new to examine. Log: {path}")
             return 0
+        # Examine the most recent quarter with new filings. An amendment
+        # to an older quarter therefore triggers a re-examination of that
+        # quarter, not of the latest one.
+        period = new_quarters[-1] if new_quarters else quarters[-1]
+        if len(new_quarters) > 1:
+            log.event("trigger", "filings arrived for several quarters "
+                                 f"({', '.join(new_quarters)}); examining "
+                                 f"{period}, the others were not examined")
     prior = quarters[quarters.index(period) - 1]
     log.event("trigger", f"examining {period} against {prior}")
     print(f"Examining {period} against {prior}.")
@@ -118,7 +127,7 @@ def main() -> int:
         log.finish("quiet", note)
         path = log.save(run_id)
         state.finish_run(state_conn, run_id, "quiet", period,
-                        len(findings), 0, 0, note)
+                        len(findings), 0, 0, note, latest_filed)
         print(f"Quiet run: {note}. Log: {path}")
         return 0
 
@@ -184,7 +193,7 @@ def main() -> int:
     log.finish("ok", f"{memos_written} memos produced")
     path = log.save(run_id)
     state.finish_run(state_conn, run_id, "ok", period, len(findings),
-                    len(selected), memos_written, "")
+                    len(selected), memos_written, "", latest_filed)
     print(f"Run {run_id} complete: {memos_written} memos in {cfg.memos_dir}. "
           f"Log: {path}")
     return 0

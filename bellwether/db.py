@@ -147,3 +147,36 @@ def resolve_cusip(conn: sqlite3.Connection, cusip: str) -> dict:
     if row is None:
         return {"ticker": None, "company_name": None}
     return {"ticker": row["ticker"], "company_name": row["company_name"]}
+
+def latest_filed_date(conn: sqlite3.Connection) -> str | None:
+    """The most recent filing date in the database, or None if empty."""
+    row = conn.execute(
+        "SELECT MAX(filed_date) AS d FROM filings WHERE parse_status = 'parsed'"
+    ).fetchone()
+    return row["d"]
+
+
+def quarters_with_filings_since(conn: sqlite3.Connection,
+                                since: str | None) -> list[str]:
+    """Quarters that have a filing newer than `since`, oldest first.
+
+    Tracking filing dates rather than quarters matters because a
+    NEW HOLDINGS amendment can add positions to a quarter that was
+    examined months earlier. Berkshire's Q3 2023 filing omitted a
+    position under confidential treatment and an amendment added it
+    later, so a trigger that only watched for new quarters would never
+    look at it.
+    """
+    if since is None:
+        rows = conn.execute(
+            "SELECT DISTINCT period_of_report FROM filings "
+            "WHERE parse_status = 'parsed' ORDER BY period_of_report"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT DISTINCT period_of_report FROM filings "
+            "WHERE parse_status = 'parsed' AND filed_date > ? "
+            "ORDER BY period_of_report",
+            (since,),
+        ).fetchall()
+    return [r["period_of_report"] for r in rows]

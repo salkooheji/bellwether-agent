@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS runs (
     findings_new     INTEGER,
     memos_produced   INTEGER,
     status           TEXT NOT NULL DEFAULT 'running',
-    notes            TEXT
+    notes            TEXT,
+    latest_filed_seen TEXT
 );
 
 CREATE TABLE IF NOT EXISTS reported_findings (
@@ -53,6 +54,11 @@ def connect(state_db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(state_db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    # Migration: latest_filed_seen was added after the first schema, so
+    # add it to databases created before that.
+    columns = {r["name"] for r in conn.execute("PRAGMA table_info(runs)")}
+    if "latest_filed_seen" not in columns:
+        conn.execute("ALTER TABLE runs ADD COLUMN latest_filed_seen TEXT")
     conn.commit()
     return conn
 
@@ -76,14 +82,20 @@ def finish_run(
     findings_new: int,
     memos_produced: int,
     notes: str = "",
+    latest_filed_seen: str | None = None,
 ) -> None:
-    """Close out a run. status is 'ok', 'quiet', or 'error'."""
+    """Close out a run. status is 'ok', 'quiet', or 'error'.
+
+    latest_filed_seen records the newest filing date present in the
+    source database at the time of the run, which becomes the watermark
+    the next run compares against.
+    """
     conn.execute(
         "UPDATE runs SET finished_at = ?, status = ?, quarter_examined = ?, "
-        "findings_total = ?, findings_new = ?, memos_produced = ?, notes = ? "
-        "WHERE run_id = ?",
-        (_now(), status, quarter_examined, findings_total,
-         findings_new, memos_produced, notes, run_id),
+        "findings_total = ?, findings_new = ?, memos_produced = ?, notes = ?, "
+        "latest_filed_seen = ? WHERE run_id = ?",
+        (_now(), status, quarter_examined, findings_total, findings_new,
+         memos_produced, notes, latest_filed_seen, run_id),
     )
     conn.commit()
 
@@ -96,6 +108,18 @@ def last_examined_quarter(conn: sqlite3.Connection) -> str | None:
     ).fetchone()
     return row["q"]
 
+def last_filed_date_seen(conn: sqlite3.Connection) -> str | None:
+    """The newest filing date any successful run has seen.
+
+    This is the trigger watermark. It tracks filing dates rather than
+    quarters so that an amendment to an already-examined quarter still
+    causes a run.
+    """
+    row = conn.execute(
+        "SELECT MAX(latest_filed_seen) AS d FROM runs "
+        "WHERE status IN ('ok', 'quiet')"
+    ).fetchone()
+    return row["d"]
 
 def make_fingerprint(finding_type: str, cik: int | None,
                      cusip: str | None, period: str) -> str:

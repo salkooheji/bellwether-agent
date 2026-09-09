@@ -5,7 +5,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-read--only-lightgrey)
 ![Agent](https://img.shields.io/badge/agent-loop%20written%20from%20scratch-purple)
 ![Trials](https://img.shields.io/badge/evaluation-30%20graded%20trials-brightgreen)
-![Tests](https://img.shields.io/badge/pytest-18%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/pytest-22%20passed-brightgreen)
 ![Completion](https://img.shields.io/badge/task%20completion-60%25%20agent%20vs%2030%25%20fixed-yellow)
 ![Traceability](https://img.shields.io/badge/memo%20figures-verified%20against%20evidence-brightgreen)
 
@@ -355,6 +355,15 @@ deterministic fingerprint, for example
 is suppressed and the run log says so. Findings left uninvestigated
 because of the per-run cap are not marked, so they resurface on the next
 run rather than being lost.
+
+The trigger watches filing dates rather than quarters. A NEW HOLDINGS
+amendment can add positions to a quarter that was examined months
+earlier, which is exactly what happened to Berkshire's Q3 2023 filing:
+a position withheld under confidential treatment was disclosed by an
+amendment filed the following year. A trigger comparing quarters would
+never look at it. Each successful run records the newest filing date it
+saw, and the next run examines any quarter with a filing newer than
+that.
 
 ## Evaluation
 

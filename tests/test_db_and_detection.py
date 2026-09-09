@@ -133,3 +133,27 @@ def test_prioritisation_orders_by_type_then_materiality():
     assert [f["type"] for f in ordered] == [
         "accumulation", "new_position", "new_position", "full_exit"]
     assert ordered[1]["label"] == "W"  # larger new position first
+
+
+def test_latest_filed_date_ignores_unparsed(conn):
+    assert db.latest_filed_date(conn) == "2024-08-01"
+
+
+def test_amendment_to_an_old_quarter_is_seen_as_new(conn):
+    """The trigger watches filing dates, not quarters.
+
+    The Q1 restatement was filed on 2024-05-01, after the quarter it
+    belongs to had already ended and could have been examined. A trigger
+    comparing quarters would miss it; comparing filing dates does not.
+    """
+    quarters = db.quarters_with_filings_since(conn, "2024-04-20")
+    assert "2024-03-31" in quarters
+
+
+def test_nothing_new_returns_empty(conn):
+    assert db.quarters_with_filings_since(conn, "2024-12-31") == []
+
+
+def test_no_watermark_returns_every_quarter(conn):
+    quarters = db.quarters_with_filings_since(conn, None)
+    assert set(quarters) == {"2024-03-31", "2024-06-30"}
